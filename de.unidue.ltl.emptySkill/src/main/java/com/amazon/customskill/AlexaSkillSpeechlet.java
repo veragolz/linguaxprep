@@ -49,6 +49,7 @@ implements SpeechletV2
 	static int rightAnswers; // in stage 2: How many right answers did the user give?
 	static int sentencesPlayed; // in stage 2: how many sentences did the user play?
 	static int sentencesInChapter; // how many sentences does the chapter contain?
+	static int currentTopic; // which vocabulary topic does the user learn?
 	static String answerOption1 = "";
 	static String answerOption2 = "";
 	static boolean publikumUsed;
@@ -73,8 +74,8 @@ implements SpeechletV2
 	ExplanationState expState;
 	
 	// Which topic does the user learn? ("university buildings", "tests and exams"...)
-	static enum CurrentTopic {One, Two, Three};
-	CurrentTopic topicRightNow;
+	//static enum CurrentTopic {One, Two, Three};
+	//CurrentTopic topicRightNow;
 	
 	// Which game does the user play? ("complete the sentence", "this or that"...)
 	static enum CurrentGame {One, Two, Three};
@@ -225,12 +226,12 @@ implements SpeechletV2
 				switch (firstUse) {
 				case First: {
 					logger.info("The User wants to learn topic 1");
-					topicRightNow = CurrentTopic.One;
+					currentTopic = 1;
 					res = askUserResponse(utterances.get("explain") + " " + utterances.get("explainStage1") + " " + utterances.get("continueOrRepeat"));
 				}; break;
 				case NotFirst: {
-					logger.info("The User wants to learn topic 1");
-					topicRightNow = CurrentTopic.One;
+					currentTopic = 1;
+					logger.info("Stage 1 topic " + currentTopic + " begins.");
 					res = askUserResponse(utterances.get("letsStart"));
 				}; break;
 				default: {
@@ -238,6 +239,10 @@ implements SpeechletV2
 					res = askUserResponse(utterances.get("didnotunderstand"));
 				} //break;
 				}
+			}; break;
+			case Continue: {
+				logger.info("Stage 1 topic " + currentTopic + " begins.");
+				res = askUserResponse(utterances.get("letsStart"));
 			}; break;
 			default:{
 				logger.info("The user said something we didn't understand.");
