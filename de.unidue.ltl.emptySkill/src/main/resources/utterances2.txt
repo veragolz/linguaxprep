@@ -5,11 +5,8 @@ didnotunderstand = Sorry, I didn't understand that. Could you please repeat it?
 explainApp = I am Lingu and I will help you to learn german sentences in university context. This app works in two stages: First: The vocabulary stage. Here, you get to know the vocabulary from one specific topic. And second: The everyday sentences stage. Here, you combine your learned vocabulary with useful phrases. I will explain this stage to you later in the game.
 continueOrRepeat = Do you want to continue or should I repeat it again? 
 whichtopic = Which vocabulary topic do you want to learn? You can decide between topic one: university buildings and orientation, or topic two: class.
-
 explain = Alright. I'm gonna explain this stage to you shortly.
 explainStage1 = I will mention a phrase with its translation and you will repeat only the german translation.
-
-
 letsStart = Okay, let's start!
 finished = You finished stage 2 from topic {replacement}
 good = That was a great game! You did very good.

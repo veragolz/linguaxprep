@@ -170,7 +170,7 @@ implements SpeechletV2
         switch (recState) {
         case Beginning: resp = evaluateAnswer(userRequest); break;
         case Stage1: resp = evaluateAnswer(userRequest); break; //we didn't define anything for stage 1 yet
-        case Stage2:; break; //we didn't define anything for stage 2 yet
+        case Stage2: resp = evaluateAnswer(userRequest); break; //we didn't define anything for stage 2 yet
 		default: resp = tellUserAndFinish("Erkannter Text: " + userRequest);
 		}   
 		return resp;
@@ -217,6 +217,7 @@ implements SpeechletV2
 			}
 			}
 		}; break;
+		
 		
 		case Stage1:{
 			switch (ourUserIntent) {
