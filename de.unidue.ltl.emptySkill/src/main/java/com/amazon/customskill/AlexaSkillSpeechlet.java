@@ -57,6 +57,9 @@ implements SpeechletV2
 	static String question = "";
 	static String correctAnswer = ""; //in stage 2: What is the correct answer for the game?
 	static String name = "";
+	static String currentVocab = ""; //current vocab from stage 1
+	static int currentVocabCounter; //index of current vocab
+	static int vocabsLearned; //how many vocabs did the user learn?
 
 	// What's the input of the user?
 	public static String userRequest;
@@ -74,8 +77,8 @@ implements SpeechletV2
 	ExplanationState expState;
 	
 	// Which topic does the user learn? ("university buildings", "tests and exams"...)
-	//static enum CurrentTopic {One, Two, Three};
-	//CurrentTopic topicRightNow;
+	static enum CurrentTopic {One, Two, Three};
+	CurrentTopic topicRightNow;
 	
 	// Which game does the user play? ("complete the sentence", "this or that"...)
 	static enum CurrentGame {One, Two, Three};
@@ -415,18 +418,44 @@ implements SpeechletV2
 	// (this method is not ready yet)
 	// this method should happen after stage 2:
 	// our user gets a ranking, how good/bad he did at the game
-//	void userRanking() { 
-//		switch (sentencesPlayed) {
-//		case 15: // (the number can be replaced): If the user played all sentences, he will get his ranking
-//			if (wrongAnswers > rightAnswers) { //if there were more wrong than right answers:
-//				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("notGood") + " " + utterances.get("whatDo"));
-//			} else if (rightAnswers > wrongAnswers) { // if there were more right than wrong answers
-//				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("good") + " " + utterances.get("whatDo"));
-//			}
-//		}
+	void userRanking() { 
+		switch (sentencesPlayed) {
+		case 15: // (the number can be replaced): If the user played all sentences, he will get his ranking
+			if (wrongAnswers > rightAnswers) { //if there were more wrong than right answers:
+				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("notGood") + " " + utterances.get("whatDo"));
+			} else if (rightAnswers == wrongAnswers) { // if there were more right than wrong answers
+				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("okay") + " " + utterances.get("whatDo"));
+			} else {
+				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("good") + " " + utterances.get("whatDo"));
+			}
+		default:
+		}
+	}
+	
+	// Stage 1
+	void firstStage() {
+		if (userRequest == currentVocab) {
+			if (vocabsLearned == 2) {
+				askUserResponse(utterances.get("finishedStageOne"));
+			} else {
+				currentVocab = utterances.get("vocabTwoD");
+			}
+			currentVocab += 1;
+		}
+		else if (userRequest != currentVocab) {
+			askUserResponse(utterances.get("tryAgain"));
+		} else {
+			askUserResponse(utterances.get("didnotunderstand"));
+		}
+	}
 	
 	
 	
+	
+	// Stage 2, Game "Complete the Sentence"
+	void completeTheSentence() {
+		
+	}
 	
 	
 	
