@@ -542,7 +542,7 @@ implements SpeechletV2
 
 		SsmlOutputSpeech speech = new SsmlOutputSpeech();
 		switch(i){ 
-		case 2: //split?
+		case 2: //split what?
 			String half1=text.split(" ")[0];
 			String[] rest = Arrays.copyOfRange(text.split(" "), 1, text.split(" ").length);
 			speech.setSsml("<speak>"+half1+"<break time=\"3s\"/>"+ StringUtils.join(rest," ") + "</speak>");
