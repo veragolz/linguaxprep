@@ -574,7 +574,7 @@ implements SpeechletV2
 
 	
 	
-	private SpeechletResponse askUserCombined (String text, int n)
+	private SpeechletResponse askUserCombined (String text , int n)
 	{
 		SsmlOutputSpeech speech = new SsmlOutputSpeech();
 		
