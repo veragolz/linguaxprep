@@ -1,0 +1,3 @@
+welcomeMessage = Hello User! I'm glad you decided to learn with Linguax Prep. What's your name?
+beispiel = Dies ist ein Beispiel.
+hallo = Beispiel Zwei ist das.

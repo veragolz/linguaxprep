@@ -49,6 +49,7 @@ implements SpeechletV2
 	static int rightAnswers; // in stage 2: How many right answers did the user give?
 	static int sentencesPlayed; // in stage 2: how many sentences did the user play?
 	static int sentencesInChapter; // how many sentences does the chapter contain?
+	static int currentTopic; // which vocabulary topic does the user learn?
 	static String answerOption1 = "";
 	static String answerOption2 = "";
 	static boolean publikumUsed;
@@ -56,6 +57,10 @@ implements SpeechletV2
 	static String question = "";
 	static String correctAnswer = ""; //in stage 2: What is the correct answer for the game?
 	static String name = "";
+	static String currentVocabEnglish = ""; //current english vocab from stage 1
+	static String currentVocabGerman = ""; //current german vocab from stage 1
+	static int currentVocabCounter; //index of current vocab
+	static int vocabsLearned; //how many vocabs did the user learn?
 
 	// What's the input of the user?
 	public static String userRequest;
@@ -81,7 +86,7 @@ implements SpeechletV2
 	CurrentGame gameRightNow;
 
 	// What does the user want? (he wants an explanation/ he wants to continue/ he doesn't know the answer...)
-	static enum UserIntent {Yes, No, A, B, C, D, One, Two, Publikum, FiftyFifty, Explanation, Continue, Idk, Solution, Name, Repeat, Exit, Error};
+	static enum UserIntent {Yes, No, A, B, C, D, One, Two, Publikum, FiftyFifty, Explanation, Continue, Idk, Solution, Name, Repeat, Exit, Error, Hörsaal, Etage};
 	UserIntent ourUserIntent;
 
 	// What our system can say (--> utterances2.txt)
@@ -153,7 +158,7 @@ implements SpeechletV2
 		recState = RecognitionState.Beginning; //our user is in the stage "beginning"
 		firstUse = FirstTime.NotFirst;
 		String greeting = utterances.get("welcomeMessage");
-		return askUserResponse(greeting); //we jump to our method "askUserResponse"
+		return askUserCombined(greeting,2); //we jump to our method "askUserResponse"
 	}
 	
 	
@@ -225,19 +230,37 @@ implements SpeechletV2
 				switch (firstUse) {
 				case First: {
 					logger.info("The User wants to learn topic 1");
-					topicRightNow = CurrentTopic.One;
+					currentTopic = 1;
 					res = askUserResponse(utterances.get("explain") + " " + utterances.get("explainStage1") + " " + utterances.get("continueOrRepeat"));
 				}; break;
 				case NotFirst: {
-					logger.info("The User wants to learn topic 1");
-					topicRightNow = CurrentTopic.One;
-					res = askUserResponse(utterances.get("letsStart"));
+					currentTopic = 1;
+					logger.info("Stage 1 topic " + currentTopic + " begins.");
+					firstStage();
+					res = askUserResponse(utterances.get("letsStart") + " " + currentVocabEnglish + " " + currentVocabGerman);
 				}; break;
 				default: {
 					logger.info("The user said something we didn't understand.");
 					res = askUserResponse(utterances.get("didnotunderstand"));
 				} //break;
 				}
+			}; break;
+			case Continue: {
+				logger.info("Stage 1 topic " + currentTopic + " begins.");
+				firstStage();
+				//res = askUserResponse(utterances.get("letsStart") + " " + currentVocabEnglish + " " + currentVocabGerman);
+				responseWithFlavour(utterances.get("letsStart"),6);
+				responseWithFlavour(currentVocabEnglish,6);
+				responseWithFlavour(currentVocabGerman,5);
+				res = responseWithFlavour(utterances.get("repeat"),6);
+			}; break;
+			case Hörsaal: {
+				vocabsLearned += 1;
+				firstStage();
+				res = askUserResponse(utterances.get("thatWasCorrect") + " " + utterances.get("letsContinue") + " " + currentVocabEnglish + " " + currentVocabGerman);
+			}; break;
+			case Etage: {
+				res = askUserResponse(utterances.get("thatWasCorrect") + " " + utterances.get("finishedStageOne"));
 			}; break;
 			default:{
 				logger.info("The user said something we didn't understand.");
@@ -328,6 +351,8 @@ implements SpeechletV2
 		String pattern6 = "\\bcontinue\\b";
 		String pattern7 = "\\brepeat\\b";
 		String pattern8 = "\\bone\\b";
+		String pattern9 = "\\bhörsaal\\b"; // this is not how it should be
+		String pattern10 = "\\betage\\b"; // this is not how it should be
 
 		Pattern p1 = Pattern.compile(pattern1);
 		Matcher m1 = p1.matcher(userRequest);
@@ -345,6 +370,10 @@ implements SpeechletV2
 		Matcher m7 = p7.matcher(userRequest);
 		Pattern p8 = Pattern.compile(pattern8);
 		Matcher m8 = p8.matcher(userRequest);
+		Pattern p9 = Pattern.compile(pattern9); // this is not how it should be
+		Matcher m9 = p9.matcher(userRequest); // this is not how it should be
+		Pattern p10 = Pattern.compile(pattern10); // this is not how it should be
+		Matcher m10 = p10.matcher(userRequest); // this is not how it should be
 		
 		if (m1.find()) {
 			String answer = m1.group(3);
@@ -368,6 +397,10 @@ implements SpeechletV2
 			ourUserIntent = UserIntent.Repeat;
 		} else if (m8.find()) {
 			ourUserIntent = UserIntent.One;
+		} else if (m9.find()) {
+			ourUserIntent = UserIntent.Hörsaal; // this is not how it should be
+		} else if (m10.find()) {
+			ourUserIntent = UserIntent.Etage; // this is not how it should be
 		} else {
 			ourUserIntent = UserIntent.Error;
 		}
@@ -410,18 +443,56 @@ implements SpeechletV2
 	// (this method is not ready yet)
 	// this method should happen after stage 2:
 	// our user gets a ranking, how good/bad he did at the game
-//	void userRanking() { 
-//		switch (sentencesPlayed) {
-//		case 15: // (the number can be replaced): If the user played all sentences, he will get his ranking
-//			if (wrongAnswers > rightAnswers) { //if there were more wrong than right answers:
-//				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("notGood") + " " + utterances.get("whatDo"));
-//			} else if (rightAnswers > wrongAnswers) { // if there were more right than wrong answers
-//				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("good") + " " + utterances.get("whatDo"));
+	void userRanking() { 
+		switch (sentencesPlayed) {
+		case 15: // (the number can be replaced): If the user played all sentences, he will get his ranking
+			if (wrongAnswers > rightAnswers) { //if there were more wrong than right answers:
+				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("notGood") + " " + utterances.get("whatDo"));
+			} else if (rightAnswers == wrongAnswers) { // if there were more right than wrong answers
+				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("okay") + " " + utterances.get("whatDo"));
+			} else {
+				askUserResponse(buildString(utterances.get("finished"), String.valueOf(topicRightNow), "") + " " + utterances.get("good") + " " + utterances.get("whatDo"));
+			}
+		default:
+		}
+	}
+	
+	// Stage 1
+//	void firstStage() {
+//		if (userRequest == currentVocab) {
+//			if (vocabsLearned == 2) {
+//				askUserResponse(utterances.get("finishedStageOne"));
+//			} else {
+//				currentVocab = utterances.get("vocabTwoD");
 //			}
+//			currentVocab += 1;
 //		}
+//		else if (userRequest != currentVocab) {
+//			askUserResponse(utterances.get("tryAgain"));
+//		} else {
+//			askUserResponse(utterances.get("didnotunderstand"));
+//		}
+//	}
+//	
 	
 	
+	void firstStage() {
+		if (vocabsLearned == 0) {
+			currentVocabEnglish = utterances.get("vocabOneE");
+			currentVocabGerman = utterances.get("vocabOneD");
+		} else if (vocabsLearned == 1) {
+			currentVocabEnglish = utterances.get("vocabTwoE");
+			currentVocabGerman = utterances.get("vocabTwoD");
+		} else {
+			logger.info("There was an error with the method 'firstStage'.");
+		}
+			
+	}
 	
+	// Stage 2, Game "Complete the Sentence"
+	void completeTheSentence() {
+		
+	}
 	
 	
 	
@@ -503,12 +574,41 @@ implements SpeechletV2
 
 	
 	
+	private SpeechletResponse askUserCombined (String text, int n)
+	{
+		SsmlOutputSpeech speech = new SsmlOutputSpeech();
+		
+		switch (n) {
+		case 1: // Beginning sequence
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Hello User!" + "<audio src='soundbank://soundlibrary/voices/crowds/crowds_01'/>" + text + "</voice></lang></speak>");
+			break;
+		case 2: // Right answer!
+			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><amazon:emotion name=\"excited\" intensity=\"medium\">" + "That was correct!" + "</amazon:emotion></lang></speak>");
+			break;
+		case 3: // Wrong answer.
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><amazon:emotion name=\"excited\" intensity=\"medium\"><audio src='soundbank://soundlibrary/computers/beeps_tones/beeps_tones_12'/>" + "That was wrong. Try again!" + "</amazon:emotion></lang></speak>");
+		
+		}
+		
+		SsmlOutputSpeech repromptSpeech = new SsmlOutputSpeech();
+		repromptSpeech.setSsml("<speak><emphasis level=\"strong\">Hey!</emphasis> Bist du noch da?</speak>");
+
+		Reprompt rep = new Reprompt();
+		rep.setOutputSpeech(repromptSpeech);
+
+		return SpeechletResponse.newAskResponse(speech, rep);
+		
+	}
+	
+	
+	
+	
 	 // hier können Strings spezielle Aussprachen zugewiesen werden. Alexa erkennt sowohl rein deutsch als auch rein englisch.
 	private SpeechletResponse responseWithFlavour(String text, int i) {
 
 		SsmlOutputSpeech speech = new SsmlOutputSpeech();
 		switch(i){ 
-		case 2: //split?
+		case 2: //split what?
 			String half1=text.split(" ")[0];
 			String[] rest = Arrays.copyOfRange(text.split(" "), 1, text.split(" ").length);
 			speech.setSsml("<speak>"+half1+"<break time=\"3s\"/>"+ StringUtils.join(rest," ") + "</speak>");
@@ -516,8 +616,8 @@ implements SpeechletV2
 		case 4: //random Audios einfügen. Z.B. clapping Hands?
 			speech.setSsml("<speak><audio src=\"soundbank://soundlibrary/voices/crowds/crowds_01\"/></speak>");
 			break;
-		case 5: //medium excited//doesn't work with Kendra voice
-			speech.setSsml("<speak><lang xml:lang=\"en-US\"><amazon:emotion name=\"excited\" intensity=\"medium\">" + text + "</amazon:emotion></lang></speak>");
+		case 5: //slowly spoken German expressions for Stage 1 and Stage 2
+			speech.setSsml("<speak><lang xml:lang=\"de-DE\"><prosody rate=\"slow\">" + text + "</prosody></lang></speak>");
 			break;
 		case 6: //mostly used - english
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + "</voice></lang></speak>");
