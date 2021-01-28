@@ -44,6 +44,7 @@ implements SpeechletV2
 
 	static Logger logger = LoggerFactory.getLogger(AlexaSkillSpeechlet.class);
 
+	static int index;
 	static int sum;
 	static int wrongAnswers; // in stage 2: How many wrong answers did the user give?
 	static int rightAnswers; // in stage 2: How many right answers did the user give?
@@ -66,7 +67,7 @@ implements SpeechletV2
 	public static String userRequest;
 
 	// In which stage are we?
-	static enum RecognitionState {Beginning, Stage1, Stage2, Ending};
+	static enum RecognitionState {Beginning, Stage1, BetweenStages, Stage2, Ending};
 	RecognitionState recState;
 	
 	// Does our user use the app for the first time?
@@ -78,15 +79,15 @@ implements SpeechletV2
 	ExplanationState expState;
 	
 	// Which topic does the user learn? ("university buildings", "tests and exams"...)
-	static enum CurrentTopic {One, Two, Three};
+	static enum CurrentTopic {Eins, Zwei, Drei};
 	CurrentTopic topicRightNow;
 	
 	// Which game does the user play? ("complete the sentence", "this or that"...)
-	static enum CurrentGame {One, Two, Three};
+	static enum CurrentGame {Eins, Zwei, Drei};
 	CurrentGame gameRightNow;
 
 	// What does the user want? (he wants an explanation/ he wants to continue/ he doesn't know the answer...)
-	static enum UserIntent {Yes, No, A, B, C, D, One, Two, Publikum, FiftyFifty, Explanation, Continue, Idk, Solution, Name, Repeat, Exit, Error, Hörsaal, Etage};
+	static enum UserIntent {Ja, Nein, A, B, C, D, Eins, Zwei, Publikum, FiftyFifty, Explanation, Weiter, Idk, Solution, Name, NochEinmal, Exit, Error, Hörsaal, Etage};
 	UserIntent ourUserIntent;
 
 	// What our system can say (--> utterances2.txt)
@@ -119,8 +120,8 @@ implements SpeechletV2
 	
 	
 	// here, we insert the name of our sqlite databank!
-	//static String DBName = "AlexaBeispiel.db";
-	//private static Connection con = null;
+	static String DBName = "linguaxprepdb.db";
+	private static Connection con = null;
 
 	
 	
@@ -142,6 +143,7 @@ implements SpeechletV2
 		publikumUsed = false;
 		fiftyfiftyUsed = false;
 		sum = 0;
+		index = 1;
 		sentencesInChapter = 0;
 		sentencesPlayed = 0;
 		rightAnswers = 0;
@@ -157,9 +159,28 @@ implements SpeechletV2
 		expState = ExplanationState.Off; //our system does not explain something right now.
 		recState = RecognitionState.Beginning; //our user is in the stage "beginning"
 		firstUse = FirstTime.NotFirst;
-		String greeting = utterances.get("welcomeMessage");
-		return askUserCombined(greeting,2); //we jump to our method "askUserResponse"
+		logger.info("We received the welcome message");
+		selectVocab();
+		return askUserTwoStrings(utterances.get("welcomeMessage1"), utterances.get("welcomeMessage2"), 3); //we jump to our method "askUserTwoStrings"
 	}
+	
+	
+	private void selectVocab() {
+		try {
+			con = DBConnection.getConnection();
+			Statement stmt = con.createStatement();
+			logger.info("something works");
+			ResultSet rs = stmt
+					.executeQuery("SELECT * FROM stage1 WHERE id=" + index + "");
+			currentVocabEnglish = rs.getString("english");
+			currentVocabGerman = rs.getString("german");
+			logger.info("extracted the english vocab: "+ currentVocabEnglish + "and the german vocab: " + currentVocabGerman);
+		} catch (Exception e){
+			logger.info("exception happens");
+			e.printStackTrace();
+		}
+	}
+	
 	
 	
 	//onIntent //here, not much happens: after this method, we jump to "evaluateAnswer"
@@ -191,29 +212,31 @@ implements SpeechletV2
 			
 			switch (ourUserIntent) {	
 			
-			case Yes: { //if the user wanted to say "Yes":
+			case Ja: { //if the user wanted to say "Yes":
 				logger.info("The user said that he's new on this app.");
 				firstUse = FirstTime.First;
 				expState = ExplanationState.On;
-				res = askUserResponse(utterances.get("newhere") + " " + utterances.get("explainApp") + " " + utterances.get("continueOrRepeat"));
+				res = askUserCombined(utterances.get("newhere"),5);
 			}; break;	
 			
-			case No: {
+			case Nein: {
 				logger.info("The user said that he has used Linguax Prep before.");
 				recState = RecognitionState.Stage1;
-				res = askUserResponse(utterances.get("notnewhere") + " " + utterances.get("whichtopic"));
+				//res = askUserResponse(utterances.get("notnewhere") + " " + utterances.get("whichtopic"));
+				res = askUserCombined(utterances.get("notnewhere"),7);
 			}; break;
 			
-			case Repeat:{
+			case NochEinmal:{
 				logger.info("The user wants a repetition of Alexa's output.");
-				res = askUserResponse(utterances.get("explainApp") + " " + utterances.get("continueOrRepeat"));
+				res = askUserCombined(utterances.get("newhere"),5);
 			}; break;
 			
-			case Continue:{
-				logger.info("The user got Alexa's explanation and wants to continue.");
+			case Weiter:{
+				logger.info("The user understood Alexa's explanation and wants to continue.");
 				expState = ExplanationState.Off;
 				recState = RecognitionState.Stage1;
-				res = askUserResponse(utterances.get("letsStart") + " " + utterances.get("whichtopic"));
+				//res = askUserResponse(utterances.get("letsStart") + " " + utterances.get("whichtopic"));
+				res = askUserCombined(utterances.get("letsStart"),7);
 			}; break;
 			
 			default:{
@@ -226,18 +249,20 @@ implements SpeechletV2
 		
 		case Stage1:{
 			switch (ourUserIntent) {
-			case One: {
+			case Eins: {
 				switch (firstUse) {
 				case First: {
 					logger.info("The User wants to learn topic 1");
 					currentTopic = 1;
-					res = askUserResponse(utterances.get("explain") + " " + utterances.get("explainStage1") + " " + utterances.get("continueOrRepeat"));
+					res = askUserCombined(utterances.get("explainStage1"),5);
+					//res = askUserResponse(utterances.get("explain") + " " + utterances.get("explainStage1"));
 				}; break;
 				case NotFirst: {
 					currentTopic = 1;
 					logger.info("Stage 1 topic " + currentTopic + " begins.");
 					firstStage();
-					res = askUserResponse(utterances.get("letsStart") + " " + currentVocabEnglish + " " + currentVocabGerman);
+					res = askUserThreeStrings(utterances.get("letsStart"), currentVocabEnglish, currentVocabGerman, 1);
+					//res = askUserResponse(utterances.get("letsStart") + " " + currentVocabEnglish + " " + currentVocabGerman);
 				}; break;
 				default: {
 					logger.info("The user said something we didn't understand.");
@@ -245,22 +270,21 @@ implements SpeechletV2
 				} //break;
 				}
 			}; break;
-			case Continue: {
+			case Weiter: {
 				logger.info("Stage 1 topic " + currentTopic + " begins.");
 				firstStage();
-				//res = askUserResponse(utterances.get("letsStart") + " " + currentVocabEnglish + " " + currentVocabGerman);
-				responseWithFlavour(utterances.get("letsStart"),6);
-				responseWithFlavour(currentVocabEnglish,6);
-				responseWithFlavour(currentVocabGerman,5);
-				res = responseWithFlavour(utterances.get("repeat"),6);
+				res = askUserThreeStrings(utterances.get("letsStart"), currentVocabEnglish, currentVocabGerman, 1);
 			}; break;
 			case Hörsaal: {
 				vocabsLearned += 1;
 				firstStage();
-				res = askUserResponse(utterances.get("thatWasCorrect") + " " + utterances.get("letsContinue") + " " + currentVocabEnglish + " " + currentVocabGerman);
+				res = askUserFourStrings(utterances.get("thatWasCorrect"), utterances.get("letsContinue"), currentVocabEnglish, currentVocabGerman, 1);
+				//res = askUserResponse(utterances.get("thatWasCorrect") + " " + utterances.get("letsContinue") + " " + currentVocabEnglish + " " + currentVocabGerman);
 			}; break;
 			case Etage: {
-				res = askUserResponse(utterances.get("thatWasCorrect") + " " + utterances.get("finishedStageOne"));
+				recState = RecognitionState.BetweenStages;
+				res = askUserTwoStrings(utterances.get("thatWasCorrect"), utterances.get("finishedStageOne"), 2);
+				//res = askUserThreeStrings(utterances.get("thatWasCorrect"), utterances.get("finishedStageOne"), utterances.get("nowStageTwo"), 2);
 			}; break;
 			default:{
 				logger.info("The user said something we didn't understand.");
@@ -269,7 +293,28 @@ implements SpeechletV2
 			}
 		}; break;
 		
+		case BetweenStages:{
+			switch (ourUserIntent) {
+			case Eins: { // = Complete The Sentence
+				logger.info("The user chooses 'Complete The Sentence'.");
+			}; break;
+			default:{
+				
+			}
+			}
+		}
+		
+		
 		case Stage2:{
+			switch (ourUserIntent) {
+			case Idk: {
+				logger.info("The user doesn't know the correct answer.");
+			} break;
+			default:{
+				logger.info("The user said something we didn't understand.");
+				res = askUserResponse(utterances.get("didnotunderstand"));
+			}
+			}
 		}; break;
 		
 		case Ending:{
@@ -346,13 +391,14 @@ implements SpeechletV2
 		String pattern1 = "(ich nehme )?(antwort )?(\\b[a-d]\\b)( bitte)?";
 		String pattern2 = "(ich nehme )?(den )?publikumsjoker( bitte)?";
 		String pattern3 = "(ich nehme )?(den )?(fiftyfifty|fÃ¼nfzigfÃ¼nfzig) joker( bitte)?";
-		String pattern4 = "\\bno\\b";
-		String pattern5 = "\\byes\\b";
-		String pattern6 = "\\bcontinue\\b";
-		String pattern7 = "\\brepeat\\b";
-		String pattern8 = "\\bone\\b";
+		String pattern4 = "\\bnein\\b";
+		String pattern5 = "\\bja\\b";
+		String pattern6 = "\\bweiter\\b";
+		String pattern7 = "\\bnoch einmal\\b";
+		String pattern8 = "\\beins\\b";
 		String pattern9 = "\\bhörsaal\\b"; // this is not how it should be
 		String pattern10 = "\\betage\\b"; // this is not how it should be
+		String pattern11 = "\\bich weiß es nicht\\b";
 
 		Pattern p1 = Pattern.compile(pattern1);
 		Matcher m1 = p1.matcher(userRequest);
@@ -374,6 +420,8 @@ implements SpeechletV2
 		Matcher m9 = p9.matcher(userRequest); // this is not how it should be
 		Pattern p10 = Pattern.compile(pattern10); // this is not how it should be
 		Matcher m10 = p10.matcher(userRequest); // this is not how it should be
+		Pattern p11 = Pattern.compile(pattern11);
+		Matcher m11 = p11.matcher(userRequest);
 		
 		if (m1.find()) {
 			String answer = m1.group(3);
@@ -388,23 +436,25 @@ implements SpeechletV2
 		} else if (m3.find()) {
 			ourUserIntent = UserIntent.FiftyFifty;
 		} else if (m4.find()) {
-			ourUserIntent = UserIntent.No;
+			ourUserIntent = UserIntent.Nein;
 		} else if (m5.find()) {
-			ourUserIntent = UserIntent.Yes;
+			ourUserIntent = UserIntent.Ja;
 		} else if (m6.find()) {
-			ourUserIntent = UserIntent.Continue;
+			ourUserIntent = UserIntent.Weiter;
 		} else if (m7.find()) { //if our user wants to repeat, we set "ourUserIntent" to "Repeat"
-			ourUserIntent = UserIntent.Repeat;
+			ourUserIntent = UserIntent.NochEinmal;
 		} else if (m8.find()) {
-			ourUserIntent = UserIntent.One;
+			ourUserIntent = UserIntent.Eins;
 		} else if (m9.find()) {
 			ourUserIntent = UserIntent.Hörsaal; // this is not how it should be
 		} else if (m10.find()) {
 			ourUserIntent = UserIntent.Etage; // this is not how it should be
+		} else if (m11.find()) {
+			ourUserIntent = UserIntent.Idk;
 		} else {
 			ourUserIntent = UserIntent.Error;
 		}
-		logger.info("set ourUserIntent to " +ourUserIntent);
+		logger.info("set ourUserIntent to " + ourUserIntent);
 		//after that, we jump back to the method "evaluateAnswer" (where we came from!)
 	}
 
@@ -579,15 +629,28 @@ implements SpeechletV2
 		SsmlOutputSpeech speech = new SsmlOutputSpeech();
 		
 		switch (n) {
-		case 1: // Beginning sequence
+		case 1: // currently empty
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Hello User!" + "<audio src='soundbank://soundlibrary/voices/crowds/crowds_01'/>" + text + "</voice></lang></speak>");
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + " Please answer with:" + "</voice></lang>" + " Ja:" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " for yes, and:" + "</voice></lang>" + " Nein:" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " for no." + "</voice></lang></speak>");
 			break;
 		case 2: // Right answer!
-			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><amazon:emotion name=\"excited\" intensity=\"medium\">" + "That was correct!" + "</amazon:emotion></lang></speak>");
+			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + "</voice></lang></speak>");
 			break;
 		case 3: // Wrong answer.
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><amazon:emotion name=\"excited\" intensity=\"medium\"><audio src='soundbank://soundlibrary/computers/beeps_tones/beeps_tones_12'/>" + "That was wrong. Try again!" + "</amazon:emotion></lang></speak>");
-		
+			break;
+		case 4: // mixed German & English response: Yes or No
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + " Please answer with:" + "</voice></lang>" + " Ja:" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " for yes, and:" + "</voice></lang>" + " Nein:" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " for no." + "</voice></lang></speak>");
+			break;
+		case 5: // mixed German & English response: Continue or Repeat?
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + " To continue, say:" + "</voice></lang>" + " Weiter." + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " Or should I repeat it again? Then say: " + "</voice></lang>" + " Noch einmal." + "</speak>");
+			break;
+		case 6: // after Stage 1: Choosing a game for Stage 2
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + " Choose a game for stage 2." + "</voice></lang>" + " Eins: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Complete the sentence. Or: " + "</voice></lang>" + "Zwei: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "This or That." + "</lang></voice></speak>");
+			break;
+		case 7: // "Which topic do you want to learn?..."
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + " Which vocabulary topic do you want to learn? If you want to learn topic one, university buildings and orientation, simply say: " + "</voice></lang>" + " Eins. " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " For topic two, class, say: " + "</voice></lang>" + "Zwei." + "</speak>");
+			break;
 		}
 		
 		SsmlOutputSpeech repromptSpeech = new SsmlOutputSpeech();
@@ -601,31 +664,77 @@ implements SpeechletV2
 	}
 	
 	
-	
-	
-	 // hier können Strings spezielle Aussprachen zugewiesen werden. Alexa erkennt sowohl rein deutsch als auch rein englisch.
-	private SpeechletResponse responseWithFlavour(String text, int i) {
-
+	private SpeechletResponse askUserTwoStrings (String text1, String text2, int n)
+	{
 		SsmlOutputSpeech speech = new SsmlOutputSpeech();
-		switch(i){ 
-		case 2: //split what?
-			String half1=text.split(" ")[0];
-			String[] rest = Arrays.copyOfRange(text.split(" "), 1, text.split(" ").length);
-			speech.setSsml("<speak>"+half1+"<break time=\"3s\"/>"+ StringUtils.join(rest," ") + "</speak>");
-			break; 
-		case 4: //random Audios einfügen. Z.B. clapping Hands?
-			speech.setSsml("<speak><audio src=\"soundbank://soundlibrary/voices/crowds/crowds_01\"/></speak>");
+		
+		switch (n) {
+		case 1: // mixed German & English response: Continue or Repeat
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + text2 + " To continue, say:" + "</voice></lang>" + " Weiter." + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " Or should I repeat it again? Then say: " + "</voice></lang>" + " Noch einmal." + "</speak>");
 			break;
-		case 5: //slowly spoken German expressions for Stage 1 and Stage 2
-			speech.setSsml("<speak><lang xml:lang=\"de-DE\"><prosody rate=\"slow\">" + text + "</prosody></lang></speak>");
+		case 2: // after Stage 1: correct & completed; choosing a game for Stage 2
+			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + text2 + " " + "Choose a game for stage 2." + "</voice></lang>" + " Eins: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Complete the sentence. Or: " + "</voice></lang>" + "Zwei: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "This or That." + "</voice></lang></speak>");
 			break;
-		case 6: //mostly used - english
-			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + "</voice></lang></speak>");
+		case 3: // Beginning sequence
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + "<audio src='soundbank://soundlibrary/voices/crowds/crowds_01'/>" + text2 + " Please answer with:" + "</voice></lang>" + " Ja:" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " for yes, and:" + "</voice></lang>" + " Nein:" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " for no." + "</voice></lang></speak>");
 			break;
-		} 
+		}
+		
+		SsmlOutputSpeech repromptSpeech = new SsmlOutputSpeech();
+		repromptSpeech.setSsml("<speak><emphasis level=\"strong\">Hey!</emphasis> Bist du noch da?</speak>");
 
-		return SpeechletResponse.newTellResponse(speech);
+		Reprompt rep = new Reprompt();
+		rep.setOutputSpeech(repromptSpeech);
+
+		return SpeechletResponse.newAskResponse(speech, rep);
+		
 	}
+	
+	private SpeechletResponse askUserThreeStrings (String text1, String text2, String text3, int n)
+	{
+		SsmlOutputSpeech speech = new SsmlOutputSpeech();
+		
+		switch (n) {
+		case 1: // Stage 1: Start
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + text2 + " " + "</voice></lang>" + text3 + "</speak>");
+			break;
+		case 2: // Stage 1: correct + completed
+			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + text2 + " " + text3 + "</voice></lang></speak>");
+			break;
+		}
+		
+		SsmlOutputSpeech repromptSpeech = new SsmlOutputSpeech();
+		repromptSpeech.setSsml("<speak><emphasis level=\"strong\">Hey!</emphasis> Bist du noch da?</speak>");
+
+		Reprompt rep = new Reprompt();
+		rep.setOutputSpeech(repromptSpeech);
+
+		return SpeechletResponse.newAskResponse(speech, rep);
+		
+	}
+	
+	
+	private SpeechletResponse askUserFourStrings (String text1, String text2, String text3, String text4, int n)
+	{
+		SsmlOutputSpeech speech = new SsmlOutputSpeech();
+		
+		switch (n) {
+		case 1: // Stage 1: correct + new vocab
+			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + text2 + " " + text3 + " " + "</voice></lang>" + text4 + "</speak>");
+			break;
+		}
+		
+		SsmlOutputSpeech repromptSpeech = new SsmlOutputSpeech();
+		repromptSpeech.setSsml("<speak><emphasis level=\"strong\">Hey!</emphasis> Bist du noch da?</speak>");
+
+		Reprompt rep = new Reprompt();
+		rep.setOutputSpeech(repromptSpeech);
+
+		return SpeechletResponse.newAskResponse(speech, rep);
+		
+	}
+	
+	
 
 
 	//could be interesting for sounds:
