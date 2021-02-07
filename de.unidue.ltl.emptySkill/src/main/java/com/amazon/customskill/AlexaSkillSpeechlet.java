@@ -53,15 +53,20 @@ implements SpeechletV2
 	static int currentTopic; // which vocabulary topic does the user learn?
 	static String answerOption1 = "";
 	static String answerOption2 = "";
-	static boolean publikumUsed;
-	static boolean fiftyfiftyUsed;
+	static boolean publikumUsed; //can be deleted
+	static boolean fiftyfiftyUsed; //can be deleted
 	static String question = "";
 	static String correctAnswer = ""; //in stage 2: What is the correct answer for the game?
 	static String name = "";
 	static String currentVocabEnglish = ""; //current english vocab from stage 1
 	static String currentVocabGerman = ""; //current german vocab from stage 1
-	static int currentVocabCounter; //index of current vocab
+	static String currentSentenceEnglish = ""; //in stage 2
+	static String currentSentenceGerman1 = ""; //in stage 2
+	static String currentSentenceGerman2 = ""; //in stage 2
+	static String missingWord = ""; // in stage 2
+	//static int currentVocabCounter; //index of current vocab
 	static int vocabsLearned; //how many vocabs did the user learn?
+	
 
 	// What's the input of the user?
 	public static String userRequest;
@@ -87,7 +92,7 @@ implements SpeechletV2
 	CurrentGame gameRightNow;
 
 	// What does the user want? (he wants an explanation/ he wants to continue/ he doesn't know the answer...)
-	static enum UserIntent {Ja, Nein, Answer, A, B, C, D, Eins, Zwei, Publikum, FiftyFifty, Explanation, Weiter, Idk, Solution, Name, NochEinmal, Exit, Error, Hörsaal, Etage};
+	static enum UserIntent {Ja, Nein, Answer, A, B, C, D, Eins, Zwei, Drei, Publikum, FiftyFifty, Explanation, Weiter, Idk, Solution, Name, NochEinmal, Exit, Error, Hörsaal, Etage};
 	UserIntent ourUserIntent;
 
 	// What our system can say (--> utterances2.txt)
@@ -166,6 +171,7 @@ implements SpeechletV2
 	
 	private void selectVocab() {
 		try {
+			logger.info("index = " + index);
 			con = DBConnection.getConnection();
 			Statement stmt = con.createStatement();
 			ResultSet rs = stmt
@@ -179,7 +185,23 @@ implements SpeechletV2
 		}
 	}
 	
-	
+	private void stage2CTS() {
+		try {
+			logger.info("index = " + index);
+			con = DBConnection.getConnection();
+			Statement stmt = con.createStatement();
+			ResultSet rs = stmt
+					.executeQuery("SELECT * FROM stage1 WHERE id=" + index + "");
+			currentSentenceEnglish = rs.getString("englishsent");
+			currentSentenceGerman1 = rs.getString("germansent1");
+			currentSentenceGerman2 = rs.getString("germansent2");
+			missingWord = rs.getString("missing");
+			logger.info("extracted:" + currentSentenceEnglish + " - " + currentSentenceGerman1 + " - " + missingWord + " - " + currentSentenceGerman2);
+		} catch (Exception e){
+			logger.info("exception happens");
+			e.printStackTrace();
+		}
+	}
 	
 	//onIntent //here, not much happens: after this method, we jump to "evaluateAnswer"
 	@Override
@@ -195,6 +217,7 @@ implements SpeechletV2
         case Beginning: resp = evaluateAnswer(userRequest); break;
         case Stage1: resp = evaluateAnswer(userRequest); break; 
         case Stage1inAction: resp = evaluateAnswer(userRequest); break;
+        case BetweenStages: resp = evaluateAnswer(userRequest); break;
         case Stage2: resp = evaluateAnswer(userRequest); break;
 		default: resp = tellUserAndFinish("Erkannter Text: " + userRequest);
 		}   
@@ -300,36 +323,67 @@ implements SpeechletV2
 			logger.info("user request is: " + userRequest);
 			//userRequest = userRequest.toLowerCase(); 
 			if (userRequest.equals(currentVocabGerman)) {
+				logger.info("Der user Request entspricht der current vocab german!");
 				String oldVocabGerman = currentVocabGerman;
 				String oldVocabEnglish = currentVocabEnglish;
-				firstStage();
+				//firstStage();
 				if (index != 5) {
+					logger.info("index is " + index);
+					firstStage();
+					logger.info("index is now " + index);
+					//logger.info(oldVocabGerman + oldVocabEnglish + currentVocabGerman + currentVocabEnglish + userRequest);
 					res = askUserFourStrings(oldVocabGerman, oldVocabEnglish, currentVocabEnglish, currentVocabGerman, 2);
 				} else {
+					//selectVocab();
+					logger.info("Wir gehen in die else Verzweigung, weil index nicht mehr ungleich 5 ist.");
 					recState = RecognitionState.BetweenStages;
-					res = askUserTwoStrings(oldVocabGerman, oldVocabEnglish, 4);
+					logger.info("Wir setzten den Recognition State auf Between Stages.");
+					res = askUserTwoStrings(currentVocabGerman, currentVocabEnglish, 4);
 				}
 				
 			} else {
-				res = askUserResponse("Oh hell no");
+				logger.info("The user gave a wrong answer in Stage 1 with: " + currentVocabEnglish + " and " + currentVocabGerman);
+				logger.info("Wir sind in der 2.else Schleife und sagen: Oh nein, das war falsch!");
+				logger.info("current vocab english is:" + currentVocabEnglish);
+				res = askUserTwoStrings(currentVocabEnglish, currentVocabGerman, 5);
 			}
 		}; break;
 		
 		
 		case BetweenStages:{
 			
+			index = 0;
+			logger.info("Wir kommen in den Anfang von Between Stages rein.");
 			recognizeUserIntent(userRequest);
+			logger.info("We could recognize the intent. Our user intent in 'Between Stages' is: " + ourUserIntent);
 			
 			switch (ourUserIntent) {
 			case Eins: { // = Complete The Sentence
 				logger.info("The user chooses 'Complete The Sentence'.");
 				switch (firstUse) {
 				case First: {
-					res = askUserCombined(utterances.get("explainCTS"),5);
+					res = askUserTwoStrings(utterances.get("explainCTS1"), utterances.get("explainCTS2"), 6);
 				}; break;
 				case NotFirst: {
+					gameRightNow = CurrentGame.Eins;
+					recState = RecognitionState.Stage2;
+					completeTheSentence();
+					res = askUserThreeStrings (currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 3);
 				}; break;
+				default:{
+					logger.info("Is the User new on this app or not? We don't know.");
 				}
+				}
+			}; break;
+			case Weiter: {
+				logger.info("The user understood and wants to start the game.");
+				gameRightNow = CurrentGame.Eins;
+				recState = RecognitionState.Stage2;
+				completeTheSentence();
+				res = askUserThreeStrings (currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 3);
+			}; break;
+			case NochEinmal: {
+				logger.info("The user wants a repetition of the explanation.");
 			}; break;
 			default:{
 				logger.info("The user said something we didn't understand.");
@@ -340,16 +394,37 @@ implements SpeechletV2
 		
 		
 		case Stage2:{
+			recognizeUserIntent(userRequest);
 			switch (ourUserIntent) {
 			case Idk: {
 				logger.info("The user doesn't know the correct answer.");
 			} break;
 			default:{
-				logger.info("The user said something we didn't understand.");
-				res = askUserResponse(utterances.get("didnotunderstand"));
+				if (userRequest.equals(missingWord)) {
+					logger.info("user request equals the current missing word.");
+					String oldCurrentSentenceGerman1 = currentSentenceGerman1;
+					String oldCurrentSentenceGerman2 = currentSentenceGerman2;
+					String oldMissingWord = missingWord;
+					if (index != 5) {
+						logger.info("index is " + index);
+						completeTheSentence();
+						logger.info("index is now " + index);
+						res = askUserSixStrings(oldCurrentSentenceGerman1, oldMissingWord, oldCurrentSentenceGerman2, currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 1);
+					} else {
+						logger.info("Wir gehen in die else Verzweigung, weil index nicht mehr ungleich 5 ist.");
+						recState = RecognitionState.Ending;
+						logger.info("Wir setzten den Recognition State auf 'Ending'.");
+						res = askUserThreeStrings(currentSentenceGerman1, missingWord, currentSentenceGerman2, 4);
+					}			
+				} else {
+					res = askUserResponse("No, that was not the correct answer.");
+				}			
 			}
 			}
 		}; break;
+		
+		
+		
 		
 		case Ending:{
 		}; break;
@@ -430,8 +505,8 @@ implements SpeechletV2
 		String pattern6 = "\\bweiter\\b";
 		String pattern7 = "\\bnoch einmal\\b";
 		String pattern8 = "\\beins\\b";
-		String pattern9 = "\\bhörsaal\\b"; // this is not how it should be
-		String pattern10 = "\\betage\\b"; // this is not how it should be
+		String pattern9 = "\\bzwei\\b"; 
+		String pattern10 = "\\bdrei\\b"; 
 		String pattern11 = "\\bich weiß es nicht\\b";
 
 		Pattern p1 = Pattern.compile(pattern1);
@@ -450,10 +525,10 @@ implements SpeechletV2
 		Matcher m7 = p7.matcher(userRequest);
 		Pattern p8 = Pattern.compile(pattern8);
 		Matcher m8 = p8.matcher(userRequest);
-		Pattern p9 = Pattern.compile(pattern9); // this is not how it should be
-		Matcher m9 = p9.matcher(userRequest); // this is not how it should be
-		Pattern p10 = Pattern.compile(pattern10); // this is not how it should be
-		Matcher m10 = p10.matcher(userRequest); // this is not how it should be
+		Pattern p9 = Pattern.compile(pattern9);
+		Matcher m9 = p9.matcher(userRequest); 
+		Pattern p10 = Pattern.compile(pattern10);
+		Matcher m10 = p10.matcher(userRequest);
 		Pattern p11 = Pattern.compile(pattern11);
 		Matcher m11 = p11.matcher(userRequest);
 		
@@ -478,11 +553,12 @@ implements SpeechletV2
 		} else if (m7.find()) { //if our user wants to repeat, we set "ourUserIntent" to "Repeat"
 			ourUserIntent = UserIntent.NochEinmal;
 		} else if (m8.find()) {
+			logger.info("Wir sind zumindest hier in recognizeUserIntent...");
 			ourUserIntent = UserIntent.Eins;
 		} else if (m9.find()) {
-			ourUserIntent = UserIntent.Hörsaal; // this is not how it should be
+			ourUserIntent = UserIntent.Zwei;
 		} else if (m10.find()) {
-			ourUserIntent = UserIntent.Etage; // this is not how it should be
+			ourUserIntent = UserIntent.Drei;
 		} else if (m11.find()) {
 			ourUserIntent = UserIntent.Idk;
 		} else {
@@ -566,6 +642,7 @@ implements SpeechletV2
 			selectVocab();
 		} else if (index == 5) {
 			selectVocab();
+			logger.info("The user reached index 5");
 		} else {
 			logger.info("There was an error with the method 'firstStage'.");
 		}
@@ -574,7 +651,15 @@ implements SpeechletV2
 	
 	// Stage 2, Game "Complete the Sentence"
 	void completeTheSentence() {
-		
+		if (index!= 5) {
+			index += 1;
+			stage2CTS();
+		} else if (index == 5) {
+			stage2CTS();
+			logger.info("The user reached index 5");
+		} else {
+			logger.info("There was an error with the method 'completeTheSentence'.");
+		}
 	}
 	
 	
@@ -705,7 +790,7 @@ implements SpeechletV2
 		case 1: // mixed German & English response: Continue or Repeat
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + text2 + " To continue, say:" + "</voice></lang>" + " Weiter." + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " Or should I repeat it again? Then say: " + "</voice></lang>" + " Noch einmal." + "</speak>");
 			break;
-		case 2: // after Stage 1: correct & completed; choosing a game for Stage 2
+		case 2: // after Stage 1: correct & completed; choosing a game for Stage 2 // not used
 			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + text2 + " " + "Choose a game for stage 2." + "</voice></lang>" + " Eins: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Complete the sentence. Or: " + "</voice></lang>" + "Zwei: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "This or That." + "</voice></lang></speak>");
 			break;
 		case 3: // Beginning sequence
@@ -713,6 +798,13 @@ implements SpeechletV2
 			break;
 		case 4: // Stage 1: correct + completed (current version)
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Correct! " + "</voice></lang>" + text1 + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " means " + text2 + ". You finished stage 1. Let's do stage 2! If you want to play game 1, Complete The Sentence, say: " + "</voice></lang>" + "Eins. " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "For game 2, This or That, say: " + "</voice></lang>" + "Zwei." + "</speak>");
+			break;
+		case 5: // Stage 1: not correct
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "No, that was not correct. Try again. " + text1 + ": " + "</voice></lang>" + text2 + "." + "</speak>");
+			break;
+		case 6: // Stage 2: explain CTS
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + "<audio src='soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02'/>" + text2 + " To continue, say:" + "</voice></lang>" + " Weiter." + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " Or should I repeat it again? Then say: " + "</voice></lang>" + " Noch einmal." + "</speak>");
+			break;
 		}
 		
 		SsmlOutputSpeech repromptSpeech = new SsmlOutputSpeech();
@@ -735,6 +827,12 @@ implements SpeechletV2
 			break;
 		case 2: // Stage 1: correct + completed
 			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + text2 + " " + text3 + "</voice></lang></speak>");
+			break;
+		case 3: // Stage 2: Complete the Sentence: Beginning
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Let's start. " + text1 + " " + "</voice></lang>" + text2 + "<audio src='soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02'/>" + text3 + " " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Which phrase is missing?" + "</voice></lang></speak>");
+			break;
+		case 4: // Stage 2: correct + completed
+			speech.setSsml("<speak><audio src=\"soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_positive_response_02\"/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Correct! " + "</voice></lang>" + text1 + " " + text2 + " " + text3 + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " You finished this game." + "</voice></lang></speak>");
 			break;
 		}
 		
@@ -772,6 +870,25 @@ implements SpeechletV2
 		
 	}
 	
+	private SpeechletResponse askUserSixStrings (String text1, String text2, String text3, String text4, String text5, String text6, int n)
+	{
+		SsmlOutputSpeech speech = new SsmlOutputSpeech();
+		
+		switch (n) {
+		case 1: // Stage 2: correct + new sentence
+			speech.setSsml("<speak><audio src=\"soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_positive_response_02\"/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Correct! " + "</voice></lang>" + text1 + " " + text2 + " " + text3 + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " Let's continue. " + text4 + "</voice></lang>" + text5 + "<audio src='soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02'/>" + text6 + " " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Which phrase is missing?" + "</voice></lang></speak>");
+			break;
+		}
+		
+		SsmlOutputSpeech repromptSpeech = new SsmlOutputSpeech();
+		repromptSpeech.setSsml("<speak><emphasis level=\"strong\">Hey!</emphasis> Bist du noch da?</speak>");
+
+		Reprompt rep = new Reprompt();
+		rep.setOutputSpeech(repromptSpeech);
+
+		return SpeechletResponse.newAskResponse(speech, rep);
+		
+	}
 	
 
 
@@ -780,6 +897,8 @@ implements SpeechletV2
 	//trumpet when user did well in the game: <audio src="soundbank://soundlibrary/musical/amzn_sfx_trumpet_bugle_04"/>
 	// "ding" that was right! <audio src="soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01"/>
 	// computersound: that was wrong. <audio src="soundbank://soundlibrary/computers/beeps_tones/beeps_tones_12"/>
+	// correct in stage 2: <audio src="soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_positive_response_02"/>
+	// stage 2: missing word is signalized by: <audio src="soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02"/>
 	
 	
 	
