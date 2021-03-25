@@ -11,5 +11,6 @@ To run our skill, download our files as zip, unpack it and open Alexa Developer 
 If you want to add vocabulary to Linguax PREP:
 
 Install DB Browser (recommended for editing databases without necessarily having to use explicite SQL expressions, but you can use any database editors which enable to change SQL-databases). At "de.unidue.ltl.emptySkill/src/main/resources", you can find our "linguaxprepdb.db" database file. Open our database with your SQL-Editor. You should now be able to change, add or delete data from our created tables. If ready, save and make sure the changed database file is placed in the right folder so our program has access to it.
+(If you added new lines of vocabulary phrases and sentences and the id number goes beyond 10, make sure to change the restrictions in our code as well - right now, the vocabulary query stops when our "index"-counter goes beyond 10.)
 
-If you want to change our code:
+Feel free to change our code and expand its functionality by importing it in a suitable development environment like Eclipse.
