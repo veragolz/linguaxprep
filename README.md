@@ -1,4 +1,4 @@
-# linguaxprep :studio_microphone:
+# Linguax PREP - Study Abroad :studio_microphone:
 Our Linguax PREP Code for our PP in 2020/2021.
 
 Zhanna Khairulina, 
