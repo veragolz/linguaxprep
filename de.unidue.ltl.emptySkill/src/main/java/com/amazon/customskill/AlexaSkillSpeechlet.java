@@ -22,6 +22,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,19 +51,16 @@ implements SpeechletV2
 	static Logger logger = LoggerFactory.getLogger(AlexaSkillSpeechlet.class);
 
 	static int index;
-	static int sum;
-	static int wrongAnswers; // in stage 2: How many wrong answSers did the user give?
+	static int wrongAnswers; // in stage 2: How many wrong answers did the user give?
 	static int rightAnswers; // in stage 2: How many right answers did the user give?
 	static int sentencesPlayed; // in stage 2: how many sentences did the user play?
 	static int sentencesInChapter; // how many sentences does the chapter contain? // not used
 	static int currentTopic; // which vocabulary topic does the user learn?
 	static String topicString; //what is the german topic string?
 	static String rankingString = "";
-	static int rankingInt = 0;
+	static int rankingInt = 0; // How the user performed in Stage 2: 0 = not good, 1 = okay, 2 = good 
 	static String thema = ""; //for the method 'selectVocab'
-	static String question = "";
 	static String correctAnswer = ""; //in stage 2: What is the correct answer for the game?
-	static String name = "";
 	static String currentVocabEnglish = ""; //current english vocab from stage 1
 	static String currentVocabGerman = ""; //current german vocab from stage 1
 	static String currentSentenceEnglish = ""; //in stage 2
@@ -71,18 +69,22 @@ implements SpeechletV2
 	static String missingWord = ""; // in stage 2
 	static String regularExpression = ""; // important for recognizing the user intent in Stage 2
 	static String currentTopicString = "";
+	static String currentStageString = "";
 	static String updatingString = ""; // used to update the UserInfo in the Database
 	static String regExVocab = ""; //important for recognizing the user intent in Stage 1
-	static int topicDoneAlready = 0;
-	static int knowsApplication = 0;
-	static int knowsStageOne = 0;
-	static int knowsGameCTS = 0;
-	static int wrongAnswerCounter = 0;
+	static int knowsApplication = 0; // Has the user listened to the application explanation at least once?
+	static int knowsStageOne = 0; // Has the user already played Stage 1 at least once?
+	static int knowsGameCTS = 0; // Has the user already played Complete the Sentence at least once?
+	static int knowsTopic1 = 0; // Has the user already learned topic x at least once?
+	static int knowsTopic2 = 0; // ''
+	static int knowsTopic3 = 0; // ''
+	static int knowsTopic4 = 0; // ''
+	static int knowsTopic5 = 0; // ''
+	static int wrongAnswerCounter = 0; //Stage 2: Counts the amount of wrong answers for one game sentence
 	static int zugriff = 0; //Stage 2: After shuffling the learning sentences: Current learning sentence
 	static int [] arr = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-	static int hasAlreadyChosenTopic = 0;
-	//Stage 2: Counts the amount of wrong answers for one game sentence
-	//static int currentVocabCounter; //index of current vocab
+	static int hasAlreadyChosenTopic = 0; // did the user already choose a topic to learn?
+	static int hasAlreadyHeardExp2 = 0; // did the user already hear the explanation for Stage 2?
 	static int vocabsLearned; //how many vocabs did the user learn?
 	
 
@@ -160,7 +162,6 @@ implements SpeechletV2
 	{
 		logger.info("Alexa session begins");
 		utterances = readSystemUtterances();
-		sum = 0;
 		index = 0;
 		sentencesInChapter = 0;
 		sentencesPlayed = 0;
@@ -177,7 +178,7 @@ implements SpeechletV2
 		expState = ExplanationState.Off; //our system does not explain something right now.
 		recState = RecognitionState.Beginning; //our user is in the stage "beginning"
 		firstUse = FirstTime.NotFirst;
-		checkIfUserKnowsAppAndStages();
+		checkIfUserKnowsAppStagesTopics();
         SpeechletResponse resp = null;
         if (knowsApplication == 0) { // User is new on Linguax PREP
 			resp = askUserTwoStrings(utterances.get("iSawThatNew"), utterances.get("readyToImprove"), 3);
@@ -213,12 +214,16 @@ implements SpeechletV2
 			currentVocabGerman = rs.getString("german");
 			regExVocab = rs.getString("regexstage1");
 			logger.info("extracted the english vocab: "+ currentVocabEnglish + " and the german vocab: " + currentVocabGerman);
+			rs.close();
+			stmt.close();
+			con.close(); //this is new
 		} catch (Exception e){
 			logger.info("exception happens");
 			e.printStackTrace();
 		}
 	}
 	
+	// shuffling the order in which the game sentences occur:
 	private static void shuffleArray(int[] array)
 	{
 	    int indi;
@@ -265,6 +270,9 @@ implements SpeechletV2
 			regularExpression = rs.getString("regex");
 			logger.info("Regex phrase is: " + regularExpression);
 			logger.info("extracted:" + currentSentenceEnglish + " - " + currentSentenceGerman1 + " - " + missingWord + " - " + currentSentenceGerman2);
+			rs.close();
+			stmt.close();
+			con.close(); //this is new
 		} catch (Exception e){
 			logger.info("exception happens");
 			e.printStackTrace();
@@ -308,11 +316,9 @@ implements SpeechletV2
 			
 			case Ja: {
 				if (knowsApplication == 0) { // if our user is new on this app.
-					//res = askUserCombined(utterances.get("newhere"),5);
 					res = askUserThreeStrings(utterances.get("newhere1"), utterances.get("newhere2"), utterances.get("newhere3"), 8);
 				} else { // if our user isn't new on this app.
 					logger.info("User still wants explanation.");
-					//res = askUserCombined(utterances.get("newhere"),5);
 					res = askUserThreeStrings(utterances.get("newhere1"), utterances.get("newhere2"), utterances.get("newhere3"), 8);
 				}
 			}; break;	
@@ -352,7 +358,9 @@ implements SpeechletV2
 		//Here, the user gets ready for Stage 1. He chooses a topic.
 		case Stage1:{ 
 			
+			checkIfUserKnowsAppStagesTopics();
 			index = 0; //resetting the index in case the user does Stage 1 more than one time in one skill cycle.
+			hasAlreadyHeardExp2 = 0;
 			
 			recognizeUserIntent(userRequest);
 			
@@ -360,15 +368,19 @@ implements SpeechletV2
 			case Eins: {
 				currentTopic = 1;
 				topicString = "Universitätsgebäude und Orientierung";
-				if (knowsStageOne == 0) { // if our user isn't familiar with stage 1.
+				if (knowsStageOne == 0) { // if our user isn't familiar with stage 1
 					logger.info("The User wants to learn topic " + currentTopic + ": " + topicString);
 					res = askUserThreeStrings(String.valueOf(currentTopic), topicString, utterances.get("explainStage1"),6);
-				} else { // if our user is already familiar with stage 1.
+				} else { // if our user is already familiar with stage 1
 					logger.info("Stage 1 topic " + currentTopic + " begins.");
 					recState = RecognitionState.Stage1inAction;
 					index = 0;
-					selectVocab();
-					res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStart"), currentVocabEnglish, currentVocabGerman, 1);
+					firstStage();
+					if (knowsTopic1 == 0) { // if our user isn't familiar with topic 1
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartNew"), currentVocabEnglish, currentVocabGerman, 1);
+					} else { // if our user is already familiar with topic 1
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartOld"), currentVocabEnglish, currentVocabGerman, 1);
+					}
 				}
 			}; break;
 			case Zwei: { 
@@ -381,8 +393,12 @@ implements SpeechletV2
 					logger.info("Stage 1 topic " + currentTopic + " begins.");
 					recState = RecognitionState.Stage1inAction;
 					index = 0;
-					selectVocab();
-					res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStart"), currentVocabEnglish, currentVocabGerman, 1);
+					firstStage();
+					if (knowsTopic2 == 0) { // if our user isn't familiar with topic 2
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartNew"), currentVocabEnglish, currentVocabGerman, 1);
+					} else { // if our user is already familiar with topic 2
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartOld"), currentVocabEnglish, currentVocabGerman, 1);
+					}
 				}
 			}; break;
 			case Drei: { 
@@ -395,8 +411,12 @@ implements SpeechletV2
 					logger.info("Stage 1 topic " + currentTopic + " begins.");
 					recState = RecognitionState.Stage1inAction;
 					index = 0;
-					selectVocab();
-					res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStart"), currentVocabEnglish, currentVocabGerman, 1);
+					firstStage();
+					if (knowsTopic3 == 0) { // if our user isn't familiar with topic 3
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartNew"), currentVocabEnglish, currentVocabGerman, 1);
+					} else { // if our user is already familiar with topic 3
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartOld"), currentVocabEnglish, currentVocabGerman, 1);
+					}
 				}
 			}; break;
 			case Vier: { 
@@ -409,8 +429,12 @@ implements SpeechletV2
 					logger.info("Stage 1 topic " + currentTopic + " begins.");
 					recState = RecognitionState.Stage1inAction;
 					index = 0;
-					selectVocab();
-					res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStart"), currentVocabEnglish, currentVocabGerman, 1);
+					firstStage();
+					if (knowsTopic4 == 0) { // if our user isn't familiar with topic 4
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartNew"), currentVocabEnglish, currentVocabGerman, 1);
+					} else { // if our user is already familiar with topic 4
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartOld"), currentVocabEnglish, currentVocabGerman, 1);
+					}
 				}
 			}; break;
 			case Fünf: { 
@@ -423,8 +447,12 @@ implements SpeechletV2
 					logger.info("Stage 1 topic " + currentTopic + " begins.");
 					recState = RecognitionState.Stage1inAction;
 					index = 0;
-					selectVocab();
-					res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStart"), currentVocabEnglish, currentVocabGerman, 1);
+					firstStage();
+					if (knowsTopic5 == 0) { // if our user isn't familiar with topic 5
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartNew"), currentVocabEnglish, currentVocabGerman, 1);
+					} else { // if our user is already familiar with topic 5
+						res = askUserFiveStrings(String.valueOf(currentTopic), topicString, utterances.get("letsStartOld"), currentVocabEnglish, currentVocabGerman, 1);
+					}
 				}
 			}; break;
 			case Idk: {
@@ -461,7 +489,7 @@ implements SpeechletV2
 				logger.info("Der user Request entspricht der current vocab german!");
 				String oldVocabGerman = currentVocabGerman;
 				String oldVocabEnglish = currentVocabEnglish;
-				if (index != 3) {
+				if (index != 10) {
 					logger.info("index is " + index);
 					firstStage();
 					logger.info("index is now " + index);
@@ -477,6 +505,9 @@ implements SpeechletV2
 			}; break;
 			case Idk: { //if the user doesn't know what to answer
 				res = askUserThreeStrings(utterances.get("dontGiveUp"), currentVocabEnglish, currentVocabGerman, 7);
+			}; break;
+			case NochEinmal: { // the user wants a repetition of the English and German vocab.
+				res = askUserTwoStrings(currentVocabEnglish, currentVocabGerman, 8);
 			}; break;
 			default: {
 				logger.info("The user said something that isn't the correct answer.");
@@ -499,33 +530,68 @@ implements SpeechletV2
 			logger.info("Our user intent in recState 'Between Stages' is: " + ourUserIntent);
 			
 			switch (ourUserIntent) {
-			case Eins: { // = Complete The Sentence
-				logger.info("The user chooses 'Complete The Sentence'.");
+			case StageTwo: { // = Complete The Sentence
+				logger.info("The user chooses to continue to Stage 2 and plays now 'Complete The Sentence'.");
 				if (knowsGameCTS == 0) { // if our user isn't familiar with the game 'Complete the Sentence'.
 					res = askUserTwoStrings(utterances.get("explainCTS1"), utterances.get("explainCTS2"), 6);
 				} else { // if our user is already familiar with the game 'Complete the Sentence'.
-					gameRightNow = CurrentGame.Eins;
 					recState = RecognitionState.Stage2;
-					shuffleArray(arr);
+					shuffleArray(arr); // shuffling the order in which the game sentences occur
 					completeTheSentence();
 					res = askUserThreeStrings (currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 3);
 				}
 			}; break;
-			case Idk: {
-				logger.info("The user is unsure about the choice of game.");
-				res = askUserCombined(utterances.get("tryOutGames"),9);
+			case Zwei: {
+				logger.info("The user chooses to continue to Stage 2 and plays now 'Complete The Sentence'.");
+				if (knowsGameCTS == 0) { // if our user isn't familiar with the game 'Complete the Sentence'.
+					res = askUserTwoStrings(utterances.get("explainCTS1"), utterances.get("explainCTS2"), 6);
+				} else { // if our user is already familiar with the game 'Complete the Sentence'.
+					recState = RecognitionState.Stage2;
+					shuffleArray(arr); // shuffling the order in which the game sentences occur
+					completeTheSentence();
+					res = askUserThreeStrings (currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 3);
+				}
 			}; break;
 			case Weiter: {
-				logger.info("The user understood and wants to start the game.");
-				gameRightNow = CurrentGame.Eins;
-				recState = RecognitionState.Stage2;
-				shuffleArray(arr);
-				completeTheSentence();
-				res = askUserThreeStrings (currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 3);
+				if (hasAlreadyHeardExp2 == 0) {
+					logger.info("The user chooses to continue to Stage 2 and plays now 'Complete The Sentence'.");
+					if (knowsGameCTS == 0) { // if our user isn't familiar with the game 'Complete the Sentence'.
+						hasAlreadyHeardExp2 = 1;
+						res = askUserTwoStrings(utterances.get("explainCTS1"), utterances.get("explainCTS2"), 6);
+					} else { // if our user is already familiar with the game 'Complete the Sentence'.
+						recState = RecognitionState.Stage2;
+						shuffleArray(arr); // shuffling the order in which the game sentences occur
+						completeTheSentence();
+						res = askUserThreeStrings (currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 3);
+					}
+				} else { // if the user already heard the explanation, a "weiter" means that he wants to start the game.
+					logger.info("The user understood and wants to start the game.");
+					recState = RecognitionState.Stage2;
+					shuffleArray(arr); // shuffling the order in which the game sentences occur
+					completeTheSentence();
+					res = askUserThreeStrings(currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 3);	
+				}
+			}; break;
+			case Idk: {
+				logger.info("The user is unsure about the choice.");
+				res = askUserCombined(utterances.get("tryOutSmth"),9);
 			}; break;
 			case NochEinmal: {
+				if (hasAlreadyHeardExp2 == 0) {
+					logger.info("The user chose to repeat Stage 1 again.");
+					recState = RecognitionState.Stage1;
+					checkIfUserKnowsAppStagesTopics();
+					res = askUserCombined(utterances.get("afterstage1choose"),8);
+				} else {
 				logger.info("The user wants a repetition of the explanation.");
-				res = askUserTwoStrings(utterances.get("explainCTS1"), utterances.get("explainCTS2"), 6);
+				res = askUserTwoStrings(utterances.get("explainCTS1"), utterances.get("explainCTS2"), 6);	
+				}
+			}; break;
+			case StageOne: {
+				logger.info("The user chose to repeat Stage 1 again.");
+				recState = RecognitionState.Stage1;
+				checkIfUserKnowsAppStagesTopics();
+				res = askUserCombined(utterances.get("afterstage1choose"),8);
 			}; break;
 			default:{
 				res = askUserResponse(utterances.get("didnotunderstand"));
@@ -543,7 +609,7 @@ implements SpeechletV2
 				String oldCurrentSentenceGerman1 = currentSentenceGerman1;
 				String oldCurrentSentenceGerman2 = currentSentenceGerman2;
 				String oldMissingWord = missingWord;
-				if (index != 3) {
+				if (index != 10) {
 					completeTheSentence();
 					res = askUserSixStrings(oldMissingWord, oldCurrentSentenceGerman1, oldCurrentSentenceGerman2, currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 3);
 				} else {
@@ -558,7 +624,7 @@ implements SpeechletV2
 				String oldCurrentSentenceGerman1 = currentSentenceGerman1;
 				String oldCurrentSentenceGerman2 = currentSentenceGerman2;
 				String oldMissingWord = missingWord;
-				if (index != 3) {
+				if (index != 10) {
 					logger.info("index was " + index);
 					completeTheSentence();
 					logger.info("index is now " + index);
@@ -567,17 +633,22 @@ implements SpeechletV2
 					logger.info("Wir gehen in die else Verzweigung, weil index nicht mehr ungleich 3 ist.");
 					recState = RecognitionState.Ending;
 					setUserInfo(); // updating our database to "The User knows how 'Complete the Sentence' works".
+					setUserInfo2();
 					logger.info("Recognition State is 'Ending'.");
 					userRanking();
 					//now, our User gets his User Ranking based on the ratio between the correct & incorrect answers in Stage 2:
 					res = askUserSixStrings(currentSentenceGerman1, missingWord, currentSentenceGerman2, String.valueOf(rightAnswers), String.valueOf(wrongAnswers), rankingString, 2);
 				}			
 			}; break;
+			case NochEinmal: { // the user wants a repetition of the exercise sentence.
+				logger.info("User wants repetition of exercise sentence.");
+				res = askUserThreeStrings(currentSentenceEnglish, currentSentenceGerman1, currentSentenceGerman2, 9);
+			}; break;
 			default: { //if the user gave a wrong answer
 					wrongAnswers += 1;
 					wrongAnswerCounter += 1;
 					if (wrongAnswerCounter == 2) {
-						if (index != 3) {
+						if (index != 10) {
 							String oldCurrentSentenceGerman1 = currentSentenceGerman1;
 							String oldCurrentSentenceGerman2 = currentSentenceGerman2;
 							String oldMissingWord = missingWord;
@@ -643,7 +714,7 @@ implements SpeechletV2
 			case Ja: {
 				logger.info("We recognize that the user wants to do Stage 1 now.");
 				recState = RecognitionState.Stage1;
-				checkIfUserKnowsAppAndStages();
+				checkIfUserKnowsAppStagesTopics();
 				if (rankingInt == 0) {
 					logger.info("the user did bad.");
 					res = askUserCombined(utterances.get("rankingint0"), 8);
@@ -651,6 +722,22 @@ implements SpeechletV2
 					logger.info("The user did okay or good.");
 					res = askUserTwoStrings(utterances.get("rankingint12"), utterances.get("rankingintafter"), 7);
 				}
+			}; break;
+			case Weiter: {
+				logger.info("We recognize that the user wants to do Stage 1 now.");
+				recState = RecognitionState.Stage1;
+				checkIfUserKnowsAppStagesTopics();
+				if (rankingInt == 0) {
+					logger.info("the user did bad.");
+					res = askUserCombined(utterances.get("rankingint0"), 8);
+				} else {
+					logger.info("The user did okay or good.");
+					res = askUserTwoStrings(utterances.get("rankingint12"), utterances.get("rankingintafter"), 7);
+				}
+			}; break;
+			case Idk: {
+				logger.info("The user is unsure.");
+				res = askUserCombined(utterances.get("youCanAlsoStop"),10);
 			}; break;
 			case Nein: {
 				res = tellUserAndFinish(utterances.get("tschuess"));
@@ -668,22 +755,34 @@ implements SpeechletV2
 		return res;
 	}
 
-	
-	
-	
-	
-	
-	
+	// setting the variable which should be set to '1' in 'setUserInfo2'
 	private void setCurrentTopicString() {
+		if (currentTopic == 1) {
+			currentTopicString = "KnowsTopic1";
+		} else if (currentTopic == 2) {
+			currentTopicString = "KnowsTopic2";
+		} else if (currentTopic == 3) {
+			currentTopicString = "KnowsTopic3";
+		} else if (currentTopic == 4) {
+			currentTopicString = "KnowsTopic4";
+		} else if (currentTopic == 5) {
+			currentTopicString = "KnowsTopic5";
+		} else {
+			logger.info("Something doesn't work in 'setCurrentTopicString'");
+		}
+	}
+	
+	// setting the variable which should be set to '1' in 'setUserInfo'
+	private void setCurrentStageString() {
 		switch (recState) {
 		case Beginning: {
-			currentTopicString = "KnowsApp";
+			currentStageString = "KnowsApp";
 		}; break;
 		case BetweenStages: {
-			currentTopicString = "KnowsStageOne";
+			currentStageString = "KnowsStageOne";
 		}; break;
 		case Ending: {
-			currentTopicString = "KnowsCTS";
+			currentStageString = "KnowsCTS";
 		}; break;
 		default: {
 			logger.info("Something didn't work in the method setCurrentTopicString");
@@ -692,48 +791,56 @@ implements SpeechletV2
 	}
 	
 	private void setUserInfo() { //Updating the database table 'UserInfo' regarding our user's progress.
-		setCurrentTopicString();
+		setCurrentStageString();
 		try {
 			con = DBConnection.getConnection();
-			logger.info("until 1");
 			Statement stmt = con.createStatement();
-			logger.info("until 2");
-			updatingString = "UPDATE UserInfo SET " + currentTopicString + " = 1 " + "WHERE Id = 0";
-			logger.info("until 3");
+			updatingString = "UPDATE UserInfo SET " + currentStageString + " = 1 " + "WHERE Id = 0";
 			logger.info(updatingString);
-	        stmt.execute(updatingString); //hier ist ein Fehler!
-	        logger.info("Set " + currentTopicString + " to 1.");
-	        con.close();
+	        stmt.execute(updatingString);
+	        stmt.close();
+	        logger.info("Set " + currentStageString + " to 1.");
 		} catch(Exception e) {
 			logger.info("exception happens in 'setUserInfo'");
 			e.printStackTrace();
+			logger.error("Exception is: " + ExceptionUtils.getStackTrace(e));
+		} finally {
+			try {
+				con.close();
+			} catch (Exception f) {
+				f.printStackTrace();
+				logger.error("Closing Exception is: " + ExceptionUtils.getStackTrace(f));
+			}
 		}
 	}
 	
-	//not used, might be not relevant
-	private void checkUserInfo() { //Checking the database table 'UserInfo' regarding our user's progress.
+	private void setUserInfo2() { //Updating the database table 'UserInfo' regarding our user's progress.
 		setCurrentTopicString();
 		try {
 			con = DBConnection.getConnection();
 			Statement stmt = con.createStatement();
-			ResultSet rs = stmt
-					.executeQuery("SELECT * FROM UserInfo WHERE id=1" + "");
-			topicDoneAlready = rs.getInt(currentTopicString);
-			con.close();
-			if(topicDoneAlready == 1) {
-				firstUse = FirstTime.NotFirst;
-				logger.info("Information was Extracted from UserInfo Table and the topic was done by the User");
-			} else {
-				firstUse = FirstTime.First;
-				logger.info("Information was Extracted from UserInfo Table and the topic was NOT done by the User");
+			updatingString = "UPDATE UserInfo SET " + currentTopicString + " = 1 " + "WHERE Id = 0";
+			logger.info(updatingString);
+	        stmt.execute(updatingString);
+	        stmt.close();
+	        logger.info("Set " + currentTopicString + " to 1.");
+		} catch(Exception e) {
+			logger.info("exception happens in 'setUserInfo2'");
+			e.printStackTrace();
+			logger.error("Exception is: " + ExceptionUtils.getStackTrace(e));
+		} finally {
+			try {
+				con.close();
+			} catch (Exception f) {
+				f.printStackTrace();
+				logger.error("Closing Exception is: " + ExceptionUtils.getStackTrace(f));
 			}
-			} catch (Exception e) {
-				logger.info("exception happens in 'checkUserInfo'");
-				e.printStackTrace();
-			}
+		}
 	}
 	
-	private void checkIfUserKnowsAppAndStages() { //Checking the database table 'UserInfo' regarding our user's progress.
+	
+	
+	private void checkIfUserKnowsAppStagesTopics() { //Checking the database table 'UserInfo' regarding our user's progress.
 		try {
 			con = DBConnection.getConnection();
 			Statement stmt = con.createStatement();
@@ -742,10 +849,16 @@ implements SpeechletV2
 			knowsApplication = rs.getInt("KnowsApp");
 			knowsStageOne = rs.getInt("KnowsStageOne");
 			knowsGameCTS = rs.getInt("KnowsCTS");
+			knowsTopic1 = rs.getInt("KnowsTopic1");
+			knowsTopic2 = rs.getInt("KnowsTopic2");
+			knowsTopic3 = rs.getInt("KnowsTopic3");
+			knowsTopic4 = rs.getInt("KnowsTopic4");
+			knowsTopic5 = rs.getInt("KnowsTopic5");
 			con.close();
 			} catch (Exception e) {
 				logger.info("exception happens in 'checkUserInfo'");
 				e.printStackTrace();
+				logger.error("Exception string: " + ExceptionUtils.getStackTrace(e));
 			}
 	}
 	
@@ -791,14 +904,13 @@ implements SpeechletV2
 		String pattern3 = "((ich )?weiß (es )?nicht)|(keine ahnung)|(lösung( bitte)?)";
 		String pattern4 = "\\bnein\\b";
 		String pattern5 = "\\bja\\b";
-		String pattern6 = "(weiter)|((ich )?(habe )?(verstanden|verstehen?))|(ok( ay)?)|(alles klar)";
-		String pattern7 = "(noch( )?(ein)?mal)|(wiederhol(ung|en))";
-		String pattern8 = "((thema |spiel )?(eins|1))|(vervollständige(.*) satz)";
-		//String pattern8 = "(ich )?(möchte |will )?(thema |spiel )?(eins|1)( spielen| lernen | machen)?|vervollständige(n)?( den)?( satz)";
-		String pattern9 = "(ich )?(möchte |will )?(thema |spiel )?(zwei|2)( spielen| lernen | machen)?|dies( oder)?( das)"; 
-		String pattern10 = "(ich )?(möchte |will )?(thema )?(drei|3)( spielen| lernen | machen)?";
-		String pattern11 = "(ich )?(möchte |will )?(thema )?(vier|4)( spielen| lernen | machen)?";
-		String pattern12 = "(ich )?(möchte |will )?(thema )?(fünf|5)( spielen| lernen | machen)?";
+		String pattern6 = "(weiter)|((ich )?(habe )?(verstanden|verstehen?))|(ok( ay)?)|(alles klar)|fortfahren";
+		String pattern7 = "(noch(.*)mal)|(wiederhol(ung|en))";
+		String pattern8 = "((thema |spiel )?(eins|1))|(vervollständige(.*) satz)|universität(.*)gebäude|orientierung";
+		String pattern9 = "((ich )?(möchte |will )?(thema |spiel )?(zwei|2)( spielen| lernen| machen)?)|\\bunterricht\\b"; 
+		String pattern10 = "((ich )?(möchte |will )?(thema )?(drei|3)( spielen| lernen| machen)?)|prüfung(en)?";
+		String pattern11 = "((ich )?(möchte |will )?(thema )?(vier|4)( spielen| lernen| machen)?)|bibliothek";
+		String pattern12 = "((ich )?(möchte |will )?(thema )?(fünf|5)( spielen| lernen| machen)?)|(konversation(.*)freunde(n)?)";
 		//String pattern13 = "(was(.*)sagen)|hilfe|(verstehe(.*)nicht)";
 
 		Pattern p1 = Pattern.compile(pattern1);
@@ -889,10 +1001,10 @@ implements SpeechletV2
 	
 	//Stage 1: Every topic contains 10 vocabs; increasing the index number until the index number is 9 (this is the 10th vocab)
 	void firstStage() { 
-		if (index != 3) {
+		if (index != 10) {
 			index += 1;
 			selectVocab();
-		} else if (index == 3) {
+		} else if (index == 10) {
 			selectVocab();
 			logger.info("The user reached index 10");
 		} else {
@@ -904,10 +1016,10 @@ implements SpeechletV2
 	// Stage 2, Game: "Complete the Sentence"; every topic contains 1 sentence for each vocab; increasing the index number until it's 9 (this is the 10th sentence)
 	void completeTheSentence() {
 		wrongAnswerCounter = 0;
-		if (index!= 3) {
+		if (index!= 10) {
 			index += 1;
 			stage2CTS();
-		} else if (index == 3) {
+		} else if (index == 10) {
 			stage2CTS();
 			logger.info("The user reached index 10");
 		} else {
@@ -1016,11 +1128,14 @@ implements SpeechletV2
 		case 7: // Stage 1: Choosing topic
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + " Which vocabulary topic do you want to learn?" + "</voice></lang>" + " Eins: Universitätsgebäude und Orientierung. Zwei: Unterricht. Drei: Prüfungen. Vier: Bibliothek. Fünf: Konversationen mit Freunden." + "</speak>");
 			break;
-		case 8: // After whole skill cycle: Again Stage 1: Choosing topic
+		case 8: // Stage 1: Choosing topic (after Stage 1 or Stage 2)
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + "</voice></lang>" + " Eins: Universitätsgebäude und Orientierung. Zwei: Unterricht. Drei: Prüfungen. Vier: Bibliothek. Fünf: Konversationen mit Freunden." + "</speak>");
 			break;
 		case 9: // Between Stages: the user is unsure which game he wants to choose.
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + "</voice></lang>" + "Eins: Vervollständige den Satz: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Complete The Sentence, or: " + "</voice></lang>" + "Zwei: Dies oder das: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "This or that?" + "</voice></lang></speak>");
+			break;
+		case 10: // On our way to stage 1: User doesn't know what to choose
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text + "</voice></lang>" + " Phase Eins " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "again?" + "</voice></lang></speak>");
 			break;
 		}
 		
@@ -1046,17 +1161,20 @@ implements SpeechletV2
 		case 3: // Beginning sequence
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + "<audio src='soundbank://soundlibrary/voices/crowds/crowds_01'/>" + text2 + " Please answer with:" + "</voice></lang>" + " Ja:" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " for yes, and:" + "</voice></lang>" + " Nein:" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " for no." + "</voice></lang></speak>");
 			break;
-		case 4: // Stage 1: correct + completed, choosing game for Stage 2
-			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Correct! " + "</voice></lang>" + text1 + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " means " + text2 + ". You finished stage 1. Let's do stage 2! Which game do you want to play? " + "</voice></lang>" + "Eins: Vervollständige den Satz: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Complete The Sentence, or: " + "</voice></lang>" + "Zwei: Dies oder das: " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "This or that?" + "</voice></lang></speak>");
+		case 4: // Stage 1: correct + completed, choosing Action (Stage 2 or Stage 1 again)
+			speech.setSsml("<speak><audio src=\"soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01\"/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Correct! " + "</voice></lang>" + text1 + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " means " + text2 + ". You finished stage 1. Do you want to continue with " + "</voice></lang>" + "Phase Zwei " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "or do " + "</voice></lang>" + "Phase Eins " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "again?" + "</voice></lang></speak>");
 			break;
 		case 5: // Stage 1: not correct
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "No, that was not correct. Try again. " + text1 + ": " + "</voice></lang>" + text2 + "." + "</speak>");
 			break;
 		case 6: // Stage 2: explain CTS
-			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + "<audio src='soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02'/>" + text2 + " Did you understand that or should I repeat it again?" + "</voice></lang></speak>");
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Alright! Let's do " + "</voice></lang>" + "Phase Zwei " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + "<audio src='soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02'/>" + text2 + " Did you understand that or should I repeat it again?" + "</voice></lang></speak>");
 			break;
 		case 7: // After whole skill cycle: Again Stage 1: Choosing topic
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + "</voice></lang>" + " Phase Eins " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text2 + "</voice></lang>" + " Eins: Universitätsgebäude und Orientierung. Zwei: Unterricht. Drei: Prüfungen. Vier: Bibliothek. Fünf: Konversationen mit Freunden." + "</speak>");
+			break;
+		case 8: // Stage 1: user wants a repetition of the English and German vocab.
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + ": " + "</voice></lang>" + text2 + "." + "</speak>");
 			break;
 		}
 		
@@ -1083,7 +1201,7 @@ implements SpeechletV2
 			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + text2 + " " + text3 + "</voice></lang></speak>");
 			break;
 		case 3: // Stage 2: Complete the Sentence: Beginning
-			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Ok, let's play Complete The Sentence. " + text1 + " " + "</voice></lang>" + text2 + "<audio src='soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02'/>" + text3 + " " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Which phrase is missing?" + "</voice></lang></speak>");
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Alright, let's do " + "</voice></lang>" + "Phase Eins " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "and play Complete The Sentence. " + text1 + " " + "</voice></lang>" + text2 + "<audio src='soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02'/>" + text3 + " " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Which phrase is missing?" + "</voice></lang></speak>");
 			break;
 		case 4: // Stage 2: correct + completed
 			speech.setSsml("<speak><audio src=\"soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_positive_response_02\"/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Correct! " + "</voice></lang>" + text1 + " " + text2 + " " + text3 + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " You finished this game." + "</voice></lang></speak>");
@@ -1099,6 +1217,9 @@ implements SpeechletV2
 			break;
 		case 8: // current mixed German & English response: Continue or Repeat?
 			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + "</voice></lang>" + "Phase Eins." + " " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text2 + "</voice></lang>" + "Phase Zwei" + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text3 + " To continue, say something like:" + "</voice></lang>" + " Weiter." + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " If you want a repetition, say something like: " + "</voice></lang>" + " Noch einmal." + "</speak>");
+			break;
+		case 9: // Stage 1: User wants a repetition of the exercise sentence.
+			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + "</voice></lang>" + text2 + "<audio src='soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02'/>" + text3 + " " + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Which phrase is missing?" + "</voice></lang></speak>");
 			break;
 		}
 		
@@ -1123,7 +1244,7 @@ implements SpeechletV2
 			speech.setSsml("<speak><audio src='soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01'/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + text1 + " " + text2 + " " + text3 + " " + "</voice></lang>" + text4 + "</speak>");
 			break;
 		case 2: // Stage 1: correct + repeat
-			speech.setSsml("<speak><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Correct! " + "</voice></lang>" + text1 + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " means " + text2 + ". Let's continue: " + text3 + "</voice></lang>" + ": " + text4 + "." + "</speak>");
+			speech.setSsml("<speak><audio src=\"soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01\"/><lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + "Correct! " + "</voice></lang>" + text1 + "<lang xml:lang=\"en-US\"><voice name=\"Kendra\">" + " means " + text2 + ". Let's continue: " + text3 + "</voice></lang>" + ": " + text4 + "." + "</speak>");
 			break;
 		}
 		
@@ -1193,30 +1314,6 @@ implements SpeechletV2
 		return SpeechletResponse.newAskResponse(speech, rep);
 		
 	}
-	
-
-
-	
-	//NOTES
-	//
-	//
-	//could be interesting for sounds:
-	// <audio src="soundbank://soundlibrary/voices/crowds/crowds_01"/>
-	//trumpet when user did well in the game: <audio src="soundbank://soundlibrary/musical/amzn_sfx_trumpet_bugle_04"/>
-	// "ding" that was right! <audio src="soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_neutral_response_01"/>
-	// computersound: that was wrong. <audio src="soundbank://soundlibrary/computers/beeps_tones/beeps_tones_12"/>
-	// correct in stage 2: <audio src="soundbank://soundlibrary/ui/gameshow/amzn_ui_sfx_gameshow_positive_response_02"/>
-	// stage 2: missing word is signalized by: <audio src="soundbank://soundlibrary/musical/amzn_sfx_electronic_beep_02"/>
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
 	
 
 
